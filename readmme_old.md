@@ -5,7 +5,6 @@
 - **Phase I** ✅ **COMPLETE** (7/7 gates PASS)
 - **Phase II.1A** (Empirical validation – energy systems) ✅ **COMPLETE**
 - **Phase II.1B** (Empirical validation – neurodynamics) ✅ **COMPLETE**
-- **Phase II.2** (Human mobility systems) ✅ **COMPLETE**
 
 ---
 
@@ -37,7 +36,7 @@ The CDR validation program is divided into empirical phases.
 | **Phase I** | Toy-model validation (controlled system) | ✅ Complete |
 | **Phase II.1A** | Real-world validation on energy infrastructure | ✅ Complete |
 | **Phase II.1B** | Real-world validation on neural dynamics (fMRI) | ✅ Complete |
-| **Phase II.2** | Human mobility systems | ✅ Complete |
+| **Phase II.2** | Human mobility systems | 📋 Planned |
 | **Phase II.3** | Ecological population dynamics | 📋 Planned |
 | **Phase II.4** | Protein dynamics | 📋 Planned |
 | **Phase III** | Laboratory experiments (EEG + RNG) | 📋 Planned |
@@ -107,28 +106,25 @@ The objective is to verify that the estimator:
 
 ## Phase II.1A — Energy Infrastructure Validation (Completed)
 
-**Dataset:**
-```
-Open Power System Data (OPSD)
-```
+**Dataset:** Open Power System Data (OPSD)
 
-**Variables used:**
+### Variables used
 ```
 (load, wind, solar, price)
 ```
 
-**State definition:**
+### State definition
 ```
 state = (load_bin, wind_bin, solar_bin, price_bin)
 ```
 
-**Discretization:**
+### Discretization
 ```
 3 bins per variable
 3⁴ = 81 states
 ```
 
-**Observations:**
+### Observations
 ```
 8740 hourly transitions
 Germany/Luxembourg grid
@@ -163,7 +159,9 @@ consistent with a highly regulated infrastructure system.
 
 ## Phase II.1B — Neural Dynamics Validation (Completed)
 
-**Dataset:**
+This phase applies CDR to brain activity dynamics measured with fMRI.
+
+### Dataset
 ```
 OpenNeuro
 ds002938
@@ -171,21 +169,47 @@ task: effort
 subject: sub-01
 ```
 
-**State construction:**
+The BOLD signal was converted into region-level time series using the Harvard-Oxford atlas.
+
+---
+
+### Pipeline
+
+- Load BOLD NIfTI
+- Extract ROI time series via `NiftiLabelsMasker`
+- Select 5 representative ROIs
+- Construct discrete system states
+- Estimate transition kernel
+- Estimate `ε` via likelihood reweighting
+
+---
+
+### State Construction
 ```
 state = (ROI₁, ROI₂, ROI₃, ROI₄, ROI₅)
 ```
 
-**Discretization:**
+#### Discretization
 ```
 2 bins per ROI
 2⁵ = 32 states
 ```
 
-**Observations:**
+#### Temporal Observations
 ```
 661 transitions
 ```
+
+---
+
+### Phase II.1B Gates
+
+| Gate | Meaning |
+|------|---------|
+| **F1** | Injection recovery |
+| **F2** | Control collapse (phase-randomized surrogates) |
+| **F3** | Train/test generalization |
+| **F5** | Discretization sensitivity |
 
 ---
 
@@ -221,196 +245,116 @@ FINAL: PASS
 
 ---
 
-## Phase II.2 — Human Mobility Validation (Completed)
+### Gate F5 Adaptation (fMRI-specific)
 
-This phase applies the CDR framework to **large-scale human mobility trajectories**.
-
----
-
-### Dataset
+During development, the original sensitivity test compared:
 ```
-Microsoft GeoLife GPS Trajectories
+bins = 2 vs bins = 3
 ```
 
-**Characteristics:**
+However, with:
 ```
-182 users
-17,000+ trajectories
-~1.2 million GPS points
-Sampling interval ≈ 1–5 seconds
+5 ROIs
 ```
 
-**After preprocessing:**
+this produces:
 ```
-user-level state trajectories
-discretized spatial bins
-temporal transition sequences
-```
-
----
-
-### System Representation
-
-Human mobility was represented as a discrete dynamical system:
-```
-state = (spatial_cell_t)
+2⁵ = 32 states
+3⁵ = 243 states
 ```
 
-**Transitions:**
+Given the dataset size:
 ```
-s(t) → s(t+1)
-```
-
-Kernel estimated via empirical transition frequencies.
-
----
-
-### Computational Complexity
-
-This phase required substantially heavier computation than previous domains.
-
-**Pipeline runtime:**
-```
-~48 hours
+661 transitions
 ```
 
-**Reasons:**
+the `bins=3` configuration enters a severe undersampling regime.
 
-- Large trajectory dataset
-- Multiple adversarial controls
-- Likelihood surface estimation
-- Holdout generalization checks
-
-Control experiments alone required several hours due to repeated recomputation of transition kernels.
-
----
-
-### Phase II.2 Gates
-
-| Gate | Meaning |
-|------|---------|
-| **F1** | Injection recovery |
-| **F2** | Control collapse |
-| **F3** | Train/test generalization |
-| **F5** | Discretization sensitivity |
-
----
-
-### Phase II.2 Results
+To preserve statistical validity, the sensitivity test was adapted to compare:
 ```
-CDR Phase II.2 (Human Mobility)
-────────────────────────────────
-
-F1_injection_recovery: PASS
-eps_hat: 0.30
-eps_true: 0.30
-abs_err: 0.00
-
-F2_controls_collapse: PASS
-median_eps_controls: 0.00
-fraction_below_tol: 1.0
-max_eps_controls: 0.00
-n_controls: 10
-
-F3_holdout_generalization: PASS
-eps_train: 0.00
-eps_test: 0.00
-abs_delta: 0.00
-
-F5_sensitivity: PASS
-eps_binsA: 0.00
-eps_binsB: 0.00
-abs_delta: 0.00
-
-────────────────────────────────
-FINAL: PASS
+bins=2 with quantile 0.50
+vs
+bins=2 with quantile 0.45
 ```
 
----
+This tests discretization robustness without exploding the state space.
 
-### Interpretation
-
-The mobility dynamics in the GeoLife dataset appear consistent with a Markovian mobility kernel:
+The estimator remained stable:
 ```
-ε ≈ 0
-```
-
-**Meaning:**
-
-Human spatial transitions in this dataset do not require additional structural mixture beyond the empirical transition kernel.
-
-Importantly, the estimator correctly recovered injected structure:
-```
-ε_true = 0.30
-ε_hat = 0.30
+ε = 0.08 → 0.06
+Δ = 0.02
+Δ_max = 0.12
 ```
 
-confirming estimator sensitivity.
+Therefore **F5 passed**.
 
 ---
 
 ## Phase II Conclusions
 
-Across **three independent empirical domains**:
+Across two independent empirical domains:
 
 | Domain | Result |
 |--------|--------|
 | Energy infrastructure | `ε ≈ 0` |
 | Neural dynamics (fMRI) | `ε ≈ 0.06–0.08` |
-| Human mobility | `ε ≈ 0` |
 
-The CDR estimator demonstrated:
+The CDR estimator successfully:
 
-- ✅ Successful injection recovery
-- ✅ Collapse under adversarial controls
-- ✅ Stable holdout generalization
-- ✅ Robustness to discretization
+- ✅ recovered injected signals
+- ✅ rejected adversarial controls
+- ✅ generalized across time windows
+- ✅ remained stable under discretization changes
 
-These results support the **cross-domain stability of the CDR estimation framework**.
+This demonstrates cross-domain robustness of the framework.
 
 ---
 
 ## Future Validation Domains
 
+The next phases extend the validation to additional complex systems.
+
+---
+
+### Phase II.2 — Human Mobility
+
+Datasets under consideration:
+
+- GeoLife GPS trajectories
+- Urban traffic datasets
+
+**Goal:**
+```
+Analyze collective human motion dynamics
+```
+
+---
+
 ### Phase II.3 — Ecological Dynamics
 
-**Target systems:**
-```
-predator-prey systems
-ecological population cycles
-multi-species time series
-```
+Potential datasets:
 
-**Objective:**
+- Predator-prey population cycles
+- Ecological time series
+
+**Goal:**
 ```
-Test adaptive biological population systems
+Test adaptive biological systems
 ```
-
-**Expected characteristics:**
-
-- Non-equilibrium dynamics
-- Feedback loops
-- Adaptive environmental coupling
-
-These systems may reveal **non-zero ε regimes** due to ecological interaction structures.
 
 ---
 
 ### Phase II.4 — Protein Dynamics
 
-**Target systems:**
-```
-molecular dynamics simulations
-protein folding trajectories
-conformational state transitions
-```
+Possible sources:
 
-**Objective:**
-```
-Test microscopic biological dynamical systems
-```
+- Molecular dynamics trajectories
+- Protein folding simulations
 
-These datasets probe the framework at the **molecular scale**, where physical constraints and energy landscapes govern transitions.
+**Goal:**
+```
+Test microscopic biological systems
+```
 
 ---
 
@@ -418,20 +362,18 @@ These datasets probe the framework at the **molecular scale**, where physical co
 
 Final validation phase.
 
-**Experiments combining:**
+Experiments combining:
 ```
 EEG recordings
 +
 quantum random number generators
 ```
 
-**Objective:**
+**Goal:**
 ```
-Test whether neural activity correlates with deviations from ideal randomness
-under strictly pre-registered experimental conditions
+Test whether neural dynamics correlate with deviations from ideal randomness 
+under fully pre-registered experimental conditions.
 ```
-
-This phase transitions from observational data to **controlled experimental validation**.
 
 ---
 
@@ -443,7 +385,7 @@ cdr-phase1-validation/
 │   ├── __init__.py
 │   ├── phase1_config.py
 │   ├── phase2_config.py
-│   ├── phase2_config_fmri.py
+│   └── phase2_config_fmri.py
 │   └── phase2_config_mobility.py
 │
 ├── data/
@@ -540,16 +482,10 @@ python src/phase2_runner.py
 python src/phase2_runner_fmri.py
 ```
 
-**Mobility validation:**
-```bash
-python src/phase2_runner_mobility.py
-```
-
 **Results saved in:**
 ```
 results/phase2_opsp/
 results/phase2_fmri/
-results/phase2_mobility/
 ```
 
 ---
@@ -559,12 +495,12 @@ results/phase2_mobility/
 The pipeline ensures reproducibility via:
 
 - ✅ Fixed random seeds
-- ✅ Serialized configuration files
 - ✅ Saved discretization bins
-- ✅ Stored likelihood curves
+- ✅ Serialized configuration files
+- ✅ Likelihood curve outputs
 - ✅ Checkpoint files
 
-All experiments are deterministic under identical configurations.
+All experiments are deterministic under the same configuration.
 
 ---
 
@@ -574,7 +510,6 @@ All experiments are deterministic under identical configurations.
 - Lakatos, I. (1978). *The Methodology of Scientific Research Programmes.*
 - Rosen, R. (1991). *Life Itself.*
 - Open Power System Data (2020) https://open-power-system-data.org/
-- GeoLife GPS Trajectory Dataset (Microsoft Research)
 
 ---
 
@@ -603,7 +538,7 @@ Independent Researcher
 Rio de Janeiro, Brazil
 
 - **GitHub:** https://github.com/ThiagoLuzpY/
-- **ORCID:** https://orcid.org/0009-0008-9732-324X
+- **ORCID:** pending
 
 ---
 
@@ -617,9 +552,8 @@ Thanks to the open scientific ecosystem:
 - nilearn
 - OpenNeuro
 - Open Power System Data
-- Microsoft GeoLife Dataset
 
 ---
 
 **Last updated:** March 2026  
-**Status:** Phase I complete ✅ | Phase II.1A complete ✅ | Phase II.1B complete ✅ | Phase II.2 complete ✅
+**Status:** Phase I complete ✅ | Phase II.1A complete ✅ | Phase II.1B complete ✅
